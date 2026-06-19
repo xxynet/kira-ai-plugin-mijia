@@ -257,7 +257,7 @@ class MijiaController:
                 result["properties"] = {p: device.get(p) for p in properties}
             if include_metadata:
                 result["available_properties"] = {
-                    name: {"desc": prop.desc, "rw": prop.rw, "type": prop.type, "unit": prop.unit}
+                    name: {"desc": prop.desc, "rw": prop.rw, "type": prop.type, "range": prop.range, "value_list": prop.value_list}
                     for name, prop in device.prop_list.items()
                 }
                 result["available_actions"] = {
