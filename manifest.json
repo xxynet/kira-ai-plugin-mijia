@@ -1,0 +1,15 @@
+{
+    "display_name": "Mijia Smart Home",
+    "plugin_id": "kira-ai-plugin-mijia",
+    "version": "1.0.0",
+    "author": "KiraAI",
+    "description": "Control Xiaomi smart home devices via Mijia API, supporting device status, control, scenes, etc.",
+    "repo": "https://github.com/xxynet/kira-ai-plugin-mijia",
+    "tags": ["tools", "smart-home"],
+    "locales": {
+        "zh": {
+            "display_name": "米家智能家居",
+            "description": "通过米家 API 控制小米智能家居设备，支持查看设备状态、控制设备、执行场景等"
+        }
+    }
+}

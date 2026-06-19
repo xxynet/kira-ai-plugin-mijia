@@ -1,0 +1,29 @@
+{
+    "enabled_sessions": {
+        "name": "Enabled Sessions",
+        "type": "list",
+        "default": [],
+        "hint": "Only allow these sessions to use Mijia tools. Format: `<adapter>:<gm/dm>:<session_id>`. Leave empty to allow all.",
+        "locales": {
+            "zh": { "name": "启用的会话", "hint": "仅允许这些会话使用米家工具，格式为 `<adapter>:<gm/dm>:<session_id>`，留空则所有会话可用" }
+        }
+    },
+    "auth_path": {
+        "type": "string",
+        "name": "Auth File Path",
+        "default": "",
+        "hint": "Path to mijia-api auth.json. Leave empty to use default: data/plugin_data/kira-ai-plugin-mijia/auth.json",
+        "locales": {
+            "zh": { "name": "认证文件路径", "hint": "米家 API 认证文件路径，留空则使用默认路径 data/plugin_data/kira-ai-plugin-mijia/auth.json" }
+        }
+    },
+    "default_home_id": {
+        "type": "string",
+        "name": "Default Home ID",
+        "default": "",
+        "hint": "Default home ID for device queries. Leave empty to query all homes.",
+        "locales": {
+            "zh": { "name": "默认家庭 ID", "hint": "查询设备时使用的默认家庭 ID，留空则查询所有家庭" }
+        }
+    }
+}
