@@ -2,7 +2,7 @@
     "display_name": "Mijia Smart Home",
     "plugin_id": "kira-ai-plugin-mijia",
     "version": "1.0.0",
-    "author": "KiraAI",
+    "author": "xxynet",
     "description": "Control Xiaomi smart home devices via Mijia API, supporting device status, control, scenes, etc.",
     "repo": "https://github.com/xxynet/kira-ai-plugin-mijia",
     "tags": ["tools", "smart-home"],
