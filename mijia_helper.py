@@ -12,18 +12,14 @@ import requests
 
 from core.plugin import logger
 
-try:
-    from mijiaAPI import (
-        mijiaAPI,
-        mijiaDevice,
-        DeviceNotFoundError,
-        GetDeviceInfoError,
-        LoginError,
-        MultipleDevicesFoundError,
-    )
-    MIJIA_API_AVAILABLE = True
-except ImportError:
-    MIJIA_API_AVAILABLE = False
+from mijiaAPI import (
+    mijiaAPI,
+    mijiaDevice,
+    DeviceNotFoundError,
+    GetDeviceInfoError,
+    LoginError,
+    MultipleDevicesFoundError,
+)
 
 
 class MijiaAPIError(Exception):
@@ -53,8 +49,6 @@ class DeviceIdentifier:
 class MijiaController:
     def __init__(self, auth_path: Optional[str] = None, default_home_id: Optional[str] = None,
                  data_dir: Optional[str] = None) -> None:
-        if not MIJIA_API_AVAILABLE:
-            raise RuntimeError("mijiaAPI not installed. Run: pip install mijiaAPI")
         self.auth_path = _resolve_auth_path(auth_path, data_dir)
         self.default_home_id = default_home_id
         self._api: Optional[mijiaAPI] = None
