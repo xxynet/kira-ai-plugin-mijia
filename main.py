@@ -51,7 +51,8 @@ class MijiaPlugin(BasePlugin):
     @register.tool(
         "mijia_login",
         "Start Mijia QR code login. Returns a URL that the user should open and scan with Mijia app. "
-        "After scanning, call mijia_login_check to verify login success. Only needs to be called once.",
+        "Show the QR code to the user and wait for the user to confirm they have scanned it. "
+        "Do not call mijia_login_check immediately after this tool.",
         {"type": "object", "properties": {}}
     )
     async def tool_login(self, _event) -> str:
@@ -66,7 +67,7 @@ class MijiaPlugin(BasePlugin):
             return ToolResult(
                 text=(
                     f"Please ask the user to scan the QR code with 米家 app:\n"
-                    f"After scanning, call mijia_login_check to complete login.\n"
+                    f"Wait for the user to confirm they have scanned it before calling mijia_login_check.\n"
                     f"Alternatively, you can send this QR Code image URL to the user if the user told that QR Code image did not appear:\n{qr_url}\n"
                 ),
                 attachments=[Image(qr_url)],
@@ -76,7 +77,9 @@ class MijiaPlugin(BasePlugin):
 
     @register.tool(
         "mijia_login_check",
-        "Check if Mijia QR code login has been completed. Call this after mijia_login and scanning the QR code.",
+        "Check whether the saved Mijia credentials are valid. Only call this after the user explicitly confirms "
+        "they have scanned the QR code; never call it immediately after mijia_login. During an active QR login, "
+        "it reports the current status.",
         {"type": "object", "properties": {}}
     )
     async def tool_login_check(self, _event) -> str:

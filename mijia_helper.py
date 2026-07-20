@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -54,10 +55,10 @@ class MijiaController:
         self._api: Optional[mijiaAPI] = None
         self._home_map: Optional[Dict[str, Dict[str, Any]]] = None
         self._login_state: Optional[str] = None
-        self._login_api = None
-        self._login_lp_url = None
-        self._login_session = None
-        self._login_headers = None
+        self._login_message: Optional[str] = None
+        self._login_qr_url: Optional[str] = None
+        self._login_thread: Optional[threading.Thread] = None
+        self._login_lock = threading.Lock()
 
     def _ensure_api(self) -> mijiaAPI:
         if self._api is None:
@@ -144,71 +145,121 @@ class MijiaController:
         return MijiaAPIError(f"Mijia API error: {e}")
 
     def login_start(self) -> Dict[str, Any]:
-        """Start QR login and return the QR URL. Does NOT wait for scan."""
-        self._login_api = mijiaAPI(auth_data_path=self.auth_path)
-        location_data = self._login_api._get_location()
+        """Start QR login and immediately begin the library's long poll."""
+        with self._login_lock:
+            if self._login_state == "waiting" and self._login_qr_url:
+                return {
+                    "status": "waiting_for_scan",
+                    "qr_url": self._login_qr_url,
+                    "message": "QR login is already in progress.",
+                }
+
+        login_api = mijiaAPI(auth_data_path=self.auth_path)
+        location_data = login_api._get_location()
         if location_data.get("code", -1) == 0:
-            self._login_api._save_auth_data()
-            self._login_api._init_session()
-            self._api = self._login_api
-            self._login_state = "done"
+            login_api._save_auth_data()
+            login_api._init_session()
+            self._patch_request(login_api)
+            with self._login_lock:
+                self._api = login_api
+                self._login_state = "done"
+                self._login_message = "Token is already valid"
             return {"status": "already_logged_in", "message": "Token is already valid"}
 
         location_data.update({
             "theme": "", "bizDeviceType": "", "_hasLogo": "false",
             "_qrsize": "240", "_dc": str(int(time.time() * 1000)),
         })
-        url = self._login_api.login_url + "?" + parse.urlencode(location_data)
+        url = login_api.login_url + "?" + parse.urlencode(location_data)
         headers = {
-            "User-Agent": self._login_api.user_agent,
+            "User-Agent": login_api.user_agent,
             "Accept-Encoding": "gzip",
             "Content-Type": "application/x-www-form-urlencoded",
             "Connection": "keep-alive",
         }
         login_ret = requests.get(url, headers=headers)
-        login_data = self._login_api._handle_ret(login_ret)
-        self._login_lp_url = login_data["lp"]
-        self._login_session = requests.Session()
-        self._login_headers = headers
-        self._login_state = "waiting"
+        login_data = login_api._handle_ret(login_ret)
+        session = requests.Session()
+        with self._login_lock:
+            self._login_state = "waiting"
+            self._login_message = "Waiting for QR code scan"
+            self._login_qr_url = login_data["qr"]
+            self._login_thread = threading.Thread(
+                target=self._complete_qr_login,
+                args=(login_api, session, login_data["lp"], headers),
+                daemon=True,
+                name="mijia-qr-login",
+            )
+            self._login_thread.start()
         return {
             "status": "waiting_for_scan",
             "qr_url": login_data["qr"],
             "message": "Please scan the QR code with Mijia app.",
         }
 
-    def login_check(self) -> Dict[str, Any]:
-        """Check if QR login has been completed (call after login_start)."""
-        if self._login_state == "done":
-            return {"status": "success", "message": "Login completed"}
-        if self._login_state != "waiting":
-            return {"status": "error", "message": "No login in progress, call mijia_login first"}
+    def _complete_qr_login(
+        self,
+        login_api: mijiaAPI,
+        session: requests.Session,
+        long_poll_url: str,
+        headers: Dict[str, str],
+    ) -> None:
+        """Mirror mijiaAPI.QRlogin's 120-second long-poll completion flow."""
         try:
-            lp_ret = self._login_session.get(
-                self._login_lp_url, headers=self._login_headers, timeout=5,
-            )
-            lp_data = self._login_api._handle_ret(lp_ret)
+            lp_ret = session.get(long_poll_url, headers=headers, timeout=120)
+            lp_data = login_api._handle_ret(lp_ret)
             auth_keys = ["psecurity", "nonce", "ssecurity", "passToken", "userId", "cUserId"]
             for key in auth_keys:
-                self._login_api.auth_data[key] = lp_data[key]
-            callback_url = lp_data["location"]
-            self._login_session.get(callback_url, headers=self._login_headers)
-            cookies = self._login_session.cookies.get_dict()
-            self._login_api.auth_data.update(cookies)
+                login_api.auth_data[key] = lp_data[key]
+            session.get(lp_data["location"], headers=headers)
+            login_api.auth_data.update(session.cookies.get_dict())
             from datetime import datetime, timedelta
-            self._login_api.auth_data["expireTime"] = int(
+
+            login_api.auth_data["expireTime"] = int(
                 (datetime.now() + timedelta(days=30)).timestamp() * 1000
             )
-            self._login_api._save_auth_data()
-            self._login_api._init_session()
-            self._api = self._login_api
-            self._login_state = "done"
-            return {"status": "success", "message": "Login successful"}
+            login_api._save_auth_data()
+            login_api._init_session()
+            self._patch_request(login_api)
+            with self._login_lock:
+                self._api = login_api
+                self._login_state = "done"
+                self._login_message = "Login successful"
         except requests.exceptions.Timeout:
-            return {"status": "waiting_for_scan", "message": "Still waiting for QR code scan..."}
+            with self._login_lock:
+                self._login_state = "expired"
+                self._login_message = "QR login timed out. Please generate a new QR code."
         except Exception as e:
-            self._login_state = None
-            return {"status": "error", "message": str(e)}
+            logger.warning(f"Mijia QR login failed: {e}")
+            with self._login_lock:
+                self._login_state = "error"
+                self._login_message = str(e)
+
+    def login_check(self) -> Dict[str, Any]:
+        """Check whether the saved Mijia credentials are currently valid."""
+        with self._login_lock:
+            login_state = self._login_state
+            login_message = self._login_message
+        if login_state == "waiting":
+            return {"status": "waiting_for_scan", "message": login_message}
+        if login_state in {"expired", "error"}:
+            return {"status": login_state, "message": login_message}
+
+        try:
+            if not Path(self.auth_path).exists():
+                return {"status": "invalid", "message": "Mijia auth file was not found."}
+            api = mijiaAPI(auth_data_path=self.auth_path)
+            if not api.available:
+                return {"status": "invalid", "message": "Mijia credentials are invalid or expired."}
+            self._patch_request(api)
+            with self._login_lock:
+                self._api = api
+                self._login_state = "done"
+                self._login_message = "Mijia credentials are valid"
+            return {"status": "success", "message": "Mijia credentials are valid"}
+        except Exception as e:
+            logger.warning(f"Mijia credential validation failed: {e}")
+            return {"status": "invalid", "message": "Mijia credentials are invalid or expired."}
 
     # --- Public API ---
 
